@@ -9,13 +9,13 @@
 */
 bool do_system(const char *cmd)
 {
-
-/*
- * TODO  add your code here
- *  Call the system() function with the command set in the cmd
- *   and return a boolean true if the system() call completed with success
- *   or false() if it returned a failure
-*/
+	int status = system(cmd);
+	if (status == 0){
+		return true;
+	}
+	else{
+		return false;
+	}
 
     return true;
 }
@@ -45,19 +45,31 @@ bool do_exec(int count, ...)
         command[i] = va_arg(args, char *);
     }
     command[count] = NULL;
-    // this line is to avoid a compile warning before your implementation is complete
-    // and may be removed
-    command[count] = command[count];
-
-/*
- * TODO:
- *   Execute a system command by calling fork, execv(),
- *   and wait instead of system (see LSP page 161).
- *   Use the command[0] as the full path to the command to execute
- *   (first argument to execv), and use the remaining arguments
- *   as second argument to the execv() command.
- *
-*/
+    
+    pid_t pid = fork();
+    if (pid < 0) {
+	    perror("Fork failed");
+	    return false;
+    }
+    else if (pid == 0) {
+	    execv(command[0], command);
+	    perror("Execv failed");
+	    exit(EXIT_FAILURE);
+    }
+    else {
+	    int status;
+	    if (waitpid(pid, &status, 0) == -1)
+	    {
+		    perror("Waitpid failed");
+		    return false;
+	    }
+	    if (WIFEXITED(status) && WEXITSTATUS(status) == 0){
+		    return true;
+	    }
+	    else {
+		    return false;
+	    }
+    }
 
     va_end(args);
 
@@ -73,27 +85,52 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
 {
     va_list args;
     va_start(args, count);
-    char * command[count+1];
+    char *command[count + 1];
     int i;
-    for(i=0; i<count; i++)
+    for (i = 0; i < count; i++)
     {
         command[i] = va_arg(args, char *);
     }
     command[count] = NULL;
-    // this line is to avoid a compile warning before your implementation is complete
-    // and may be removed
-    command[count] = command[count];
 
+    int fd = open(outputfile, O_WRONLY | O_TRUNC | O_CREAT, 0644);
+    if (fd < 0)
+    {
+        perror("open");
+        return false;
+    }
 
-/*
- * TODO
- *   Call execv, but first using https://stackoverflow.com/a/13784315/1446624 as a refernce,
- *   redirect standard out to a file specified by outputfile.
- *   The rest of the behaviour is same as do_exec()
- *
-*/
+    pid_t pid = fork();
+    if (pid == -1)
+    {
+        perror("fork");
+        close(fd);
+        return false;
+    }
+    else if (pid == 0)
+    {
+        if (dup2(fd, STDOUT_FILENO) < 0)
+        {
+            perror("dup2");
+            close(fd);
+            return false;
+        }
 
-    va_end(args);
+        close(fd);
 
-    return true;
+        execvp(command[0], command);
+
+        perror("execvp");
+        exit(1);
+    }
+    else
+    {
+        close(fd);
+
+        int status;
+        waitpid(pid, &status, 0);
+
+        va_end(args);
+        return true;
+    }
 }
